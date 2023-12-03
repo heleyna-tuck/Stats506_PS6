@@ -25,34 +25,45 @@ head(flights)
 # Set seed for reproducibility
 set.seed(123)
 
-# Function to calculate the mean air_time for flights within each origin
-mean_air_time <- function(data) {
-  mean_time <- mean(data$air_time, na.rm = TRUE)
-  return(mean_time)
-}
-
-# Set the number of bootstrap samples
+# Define the number of bootstrap samples
 num_samples <- 1000
 
-# Stratified bootstrapping by dests
-set.seed(123)  # for reproducibility
-boot_results <- boot(data = flights, statistic = mean_air_time, R = num_samples)
+# Create a function to perform stratified bootstrapping
+stratified_bootstrap <- function(data) {
+  # Sample with replacement within each stratum
+  bootstrapped_data <- data %>%
+    group_by(dest) %>%
+    sample_n(size = n(), replace = TRUE) %>%
+    ungroup()
+
+  # Calculate mean air_time for each origin
+  mean_air_time <- bootstrapped_data %>%
+    group_by(origin) %>%
+    summarize(mean_air_time = mean(air_time, na.rm = TRUE))
+
+  return(mean_air_time)
+}
+
+# Perform stratified bootstrapping for num_samples times
+bootstrap_results <- lapply(1:num_samples, function(x) stratified_bootstrap(flights))
+
+# Combine the results into a data frame
+bootstrap_df <- do.call(rbind, bootstrap_results)
 
 ```
 
 ```{r}
-# Extract bootstrap estimates and confidence intervals
-boot_estimates <- boot_results$t
-boot_ci <- boot.ci(boot_results, type = "basic")$percent
+# Calculate confidence intervals for each origin
+confidence_intervals <- bootstrap_df %>%
+  group_by(origin) %>%
+  summarize(
+    mean_estimate = mean(mean_air_time),
+    lower_ci = quantile(mean_air_time, 0.025),
+    upper_ci = quantile(mean_air_time, 0.975)
+  )
 
-# Create a summary table
-result_table <- as.data.frame(boot_estimates)
-result_table$lower_ci <- boot_ci[, 4]
-result_table$upper_ci <- boot_ci[, 5]
-rownames(result_table) <- levels(flights$origin)
-
-# Print the summary table
-print(result_table)
+# Print the results
+print(confidence_intervals)
 ```
 
 ### Using Parallel Processing:
