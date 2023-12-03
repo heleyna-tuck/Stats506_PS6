@@ -1,0 +1,104 @@
+---
+title: "Stats506_PS6"
+author: "Heleyna Tucker"
+format:
+  html:
+    embed-resources: true
+editor: visual
+---
+
+# Stratified Bootstrapping
+
+Use the `flights` data from the **nycflights13** package. Use stratified bootstrapping by `dests` to estimate the average `air_time` for flights within each `origin` and produce a table including the estimates and confidence intervals for each `origin`.
+
+### Without Parallel Processing
+
+Load in needed libraries and look at the flights data:
+
+```{r}
+library(nycflights13)
+library(boot)
+head(flights)
+```
+
+```{r}
+# Set seed for reproducibility
+set.seed(123)
+
+# Function to calculate the mean air_time for flights within each origin
+mean_air_time <- function(data) {
+  mean_time <- mean(data$air_time, na.rm = TRUE)
+  return(mean_time)
+}
+
+# Set the number of bootstrap samples
+num_samples <- 1000
+
+# Stratified bootstrapping by dests
+set.seed(123)  # for reproducibility
+boot_results <- boot(data = flights, statistic = mean_air_time, R = num_samples)
+
+```
+
+```{r}
+# Extract bootstrap estimates and confidence intervals
+boot_estimates <- boot_results$t
+boot_ci <- boot.ci(boot_results, type = "basic")$percent
+
+# Create a summary table
+result_table <- as.data.frame(boot_estimates)
+result_table$lower_ci <- boot_ci[, 4]
+result_table$upper_ci <- boot_ci[, 5]
+rownames(result_table) <- levels(flights$origin)
+
+# Print the summary table
+print(result_table)
+```
+
+### Using Parallel Processing:
+
+```{r}
+library(nycflights13)
+library(boot)
+library(future)
+library(purrr)
+
+# Set up parallel processing
+plan(multiprocess)
+
+# Set seed for reproducibility
+set.seed(123)
+
+# Create a function to calculate the means for each origin
+calculate_means <- function(data, indices) {
+  sampled_data <- data[indices, ]
+  origin_means <- tapply(sampled_data$air_time, sampled_data$origin, mean, na.rm = TRUE)
+  return(origin_means)
+}
+
+# Specify the number of bootstrap samples
+num_samples <- 1000
+
+# Perform stratified bootstrapping by dest and origin in parallel
+bootstrap_results <- future.apply::future_lapply(1:num_samples, function(_) {
+  resample_indices <- sample(nrow(flights), replace = TRUE)
+  calculate_means(flights, resample_indices)
+})
+
+# Convert the list of results into a matrix
+bootstrap_matrix <- do.call(cbind, bootstrap_results)
+
+# Calculate standard errors
+se_origins <- apply(bootstrap_matrix, 1, sd)
+
+# Create a table of means and standard errors for each origin
+results_table <- data.frame(
+  Origin = c("A", "B", "C"),
+  Mean = c(mean(flights$air_time[flights$origin == "A"], na.rm = TRUE),
+           mean(flights$air_time[flights$origin == "B"], na.rm = TRUE),
+           mean(flights$air_time[flights$origin == "C"], na.rm = TRUE)),
+  SE = se_origins
+)
+
+print(results_table)
+```
