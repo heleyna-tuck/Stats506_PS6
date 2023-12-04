@@ -73,7 +73,7 @@ confidence_intervals <- bootstrap_df %>%
   )
 
 # Print the results
-print(confidence_intervals)
+confidence_intervals
 ```
 
 ### Using Parallel Processing:
@@ -98,7 +98,7 @@ confidence_intervals <- bootstrap_results %>%
   )
 
 # Print the results
-print(confidence_intervals)
+confidence_intervals
 ```
 
 ### Time Differences:
