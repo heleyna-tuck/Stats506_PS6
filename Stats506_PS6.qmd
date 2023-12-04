@@ -18,6 +18,8 @@ Load in needed libraries and look at the flights data:
 ```{r}
 library(nycflights13)
 library(boot)
+library(dplyr)
+library(furrr)
 head(flights)
 ```
 
@@ -43,6 +45,8 @@ stratified_bootstrap <- function(data) {
 
   return(mean_air_time)
 }
+# Record the start time
+start_time <- Sys.time()
 
 # Perform stratified bootstrapping for num_samples times
 bootstrap_results <- lapply(1:num_samples, function(x) stratified_bootstrap(flights))
@@ -69,47 +73,96 @@ print(confidence_intervals)
 ### Using Parallel Processing:
 
 ```{r}
-library(nycflights13)
-library(boot)
-library(future)
-library(purrr)
-
 # Set up parallel processing
-plan(multiprocess)
+plan(multisession, workers = 2)  # Adjust the number of workers as needed
 
 # Set seed for reproducibility
 set.seed(123)
 
-# Create a function to calculate the means for each origin
-calculate_means <- function(data, indices) {
-  sampled_data <- data[indices, ]
-  origin_means <- tapply(sampled_data$air_time, sampled_data$origin, mean, na.rm = TRUE)
-  return(origin_means)
-}
-
-# Specify the number of bootstrap samples
+# Define the number of bootstrap samples
 num_samples <- 1000
 
-# Perform stratified bootstrapping by dest and origin in parallel
-bootstrap_results <- future.apply::future_lapply(1:num_samples, function(_) {
-  resample_indices <- sample(nrow(flights), replace = TRUE)
-  calculate_means(flights, resample_indices)
+# Create a function to perform stratified bootstrapping
+stratified_bootstrap <- function(data) {
+  # Sample with replacement within each stratum
+  bootstrapped_data <- data %>%
+    group_by(dest) %>%
+    sample_n(size = n(), replace = TRUE) %>%
+    ungroup()
+
+  # Calculate mean air_time for each origin
+  mean_air_time <- bootstrapped_data %>%
+    group_by(origin) %>%
+    summarize(mean_air_time = mean(air_time, na.rm = TRUE))
+
+  return(mean_air_time)
+}
+
+# Perform stratified bootstrapping in parallel for num_samples times
+bootstrap_results <- future_map_dfr(1:num_samples, ~stratified_bootstrap(flights))
+
+# Calculate confidence intervals for each origin
+confidence_intervals <- bootstrap_results %>%
+  group_by(origin) %>%
+  summarize(
+    mean_estimate = mean(mean_air_time),
+    lower_ci = quantile(mean_air_time, 0.025),
+    upper_ci = quantile(mean_air_time, 0.975)
+  )
+
+# Print the results
+print(confidence_intervals)
+```
+
+### Time Differences:
+
+Run both bootstrapped samples and record the times each take:
+
+```{r}
+# Set seed for reproducibility
+set.seed(123)
+
+# Define the number of bootstrap samples
+num_samples <- 1000
+
+# Create a function to perform stratified bootstrapping
+stratified_bootstrap <- function(data) {
+  # Sample with replacement within each stratum
+  bootstrapped_data <- data %>%
+    group_by(dest) %>%
+    sample_n(size = n(), replace = TRUE) %>%
+    ungroup()
+
+  # Calculate mean air_time for each origin
+  mean_air_time <- bootstrapped_data %>%
+    group_by(origin) %>%
+    summarize(mean_air_time = mean(air_time, na.rm = TRUE))
+
+  return(mean_air_time)
+}
+
+# Non-parallelized version
+start_time_non_parallel <- system.time({
+  bootstrap_results_non_parallel <- lapply(1:num_samples, function(x) stratified_bootstrap(flights))
+  bootstrap_df_non_parallel <- do.call(rbind, bootstrap_results_non_parallel)
 })
 
-# Convert the list of results into a matrix
-bootstrap_matrix <- do.call(cbind, bootstrap_results)
-
-# Calculate standard errors
-se_origins <- apply(bootstrap_matrix, 1, sd)
-
-# Create a table of means and standard errors for each origin
-results_table <- data.frame(
-  Origin = c("A", "B", "C"),
-  Mean = c(mean(flights$air_time[flights$origin == "A"], na.rm = TRUE),
-           mean(flights$air_time[flights$origin == "B"], na.rm = TRUE),
-           mean(flights$air_time[flights$origin == "C"], na.rm = TRUE)),
-  SE = se_origins
-)
-
-print(results_table)
+# Parallelized version
+plan(multisession, workers = 2)  # Adjust the number of workers as needed
+start_time_parallel <- system.time({
+  bootstrap_results_parallel <- future_map_dfr(1:num_samples, ~stratified_bootstrap(flights))
+})
 ```
+
+```{r}
+# Print the results
+cat("Non-parallelized version time:", start_time_non_parallel["elapsed"], "\n")
+cat("Parallelized version time:", start_time_parallel["elapsed"], "\n")
+
+# Report the performance difference
+performance_difference <- start_time_non_parallel["elapsed"] - start_time_parallel["elapsed"]
+cat("Performance difference:", performance_difference, "\n")
+
+```
+
+As we can see above, the paralleled version took substatially less time to run compared to the non-parallel version.
