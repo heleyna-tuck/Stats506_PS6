@@ -26,13 +26,19 @@ head(flights)
 ```
 
 ```{r}
-# Set seed for reproducibility
-set.seed(123)
 
 # Define the number of bootstrap samples
 num_samples <- 1000
 
 # Create a function to perform stratified bootstrapping
+#' Caluclate the mean air time for each origin
+#'
+#' @param data 
+#'
+#' @return mean air time
+#' @export
+#'
+#' @examples
 stratified_bootstrap <- function(data) {
   # Sample with replacement within each stratum
   bootstrapped_data <- data %>%
@@ -47,8 +53,6 @@ stratified_bootstrap <- function(data) {
 
   return(mean_air_time)
 }
-# Record the start time
-start_time <- Sys.time()
 
 # Perform stratified bootstrapping for num_samples times
 bootstrap_results <- lapply(1:num_samples, function(x) stratified_bootstrap(flights))
@@ -78,27 +82,8 @@ print(confidence_intervals)
 # Set up parallel processing
 plan(multisession, workers = 2)  # Adjust the number of workers as needed
 
-# Set seed for reproducibility
-set.seed(123)
-
 # Define the number of bootstrap samples
 num_samples <- 1000
-
-# Create a function to perform stratified bootstrapping
-stratified_bootstrap <- function(data) {
-  # Sample with replacement within each stratum
-  bootstrapped_data <- data %>%
-    group_by(dest) %>%
-    sample_n(size = n(), replace = TRUE) %>%
-    ungroup()
-
-  # Calculate mean air_time for each origin
-  mean_air_time <- bootstrapped_data %>%
-    group_by(origin) %>%
-    summarize(mean_air_time = mean(air_time, na.rm = TRUE))
-
-  return(mean_air_time)
-}
 
 # Perform stratified bootstrapping in parallel for num_samples times
 bootstrap_results <- future_map_dfr(1:num_samples, ~stratified_bootstrap(flights))
@@ -121,27 +106,9 @@ print(confidence_intervals)
 Run both bootstrapped samples and record the times each take:
 
 ```{r}
-# Set seed for reproducibility
-set.seed(123)
 
 # Define the number of bootstrap samples
 num_samples <- 1000
-
-# Create a function to perform stratified bootstrapping
-stratified_bootstrap <- function(data) {
-  # Sample with replacement within each stratum
-  bootstrapped_data <- data %>%
-    group_by(dest) %>%
-    sample_n(size = n(), replace = TRUE) %>%
-    ungroup()
-
-  # Calculate mean air_time for each origin
-  mean_air_time <- bootstrapped_data %>%
-    group_by(origin) %>%
-    summarize(mean_air_time = mean(air_time, na.rm = TRUE))
-
-  return(mean_air_time)
-}
 
 # Non-parallelized version
 start_time_non_parallel <- system.time({
